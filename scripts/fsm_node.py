@@ -34,8 +34,10 @@ class FSM(object):
             'seguir_linea_2_b']
 
     color = 'r'
-    side_detected = 0
+    side_detected = False
     orientation = 0.0
+    real_orientation = 0.0
+    last_orientation = 0.0
     action = 'null'
     cmd_vel_select = None
     vel = Twist()
@@ -45,6 +47,7 @@ class FSM(object):
         self.cmd_vel_select('raw_cmd_vel')
         self.vel.linear.x = 0.0
         self.vel.angular.z = 0.0
+        line_pub.publish(False)
         cmd_vel_pub.publish(self.vel)
 
     def negro(self):
@@ -54,9 +57,11 @@ class FSM(object):
         self.action = 'following'
         print ("siguiendo linea")
         self.cmd_vel_select('follow_line_cmd_vel')
+        line_pub.publish(True)
         if self.state == 'avanzar':
             rospy.sleep(0.5)
             self.timeout()
+            line_pub.publish(False)
     
     def girar(self):
         self.action = 'turning'
@@ -68,16 +73,16 @@ class FSM(object):
         elif (self.state == 'girar_linea'):
             if self.negro():
                 if self.side_detected == 1:
-                    self.orientation = 105 * math.pi / 180
+                    self.orientation = -90
                 else:
-                    self.orientation = -105 * math.pi / 180
+                    self.orientation = 90
                 angle_pub.publish(self.orientation)
                 print ('girando 105 grados')
             else:
                 if self.side_detected == 1:
-                    self.orientation = 75 * math.pi / 180
+                    self.orientation = -180
                 else:
-                    self.orientation = -75 * math.pi / 180
+                    self.orientation = 180
                 angle_pub.publish(self.orientation)
                 print ('girando 75 grados')
         elif self.state == 'girar_color_f':
@@ -104,6 +109,7 @@ class FSM(object):
                 print ('girar azul b')
 
     def sondeo(self):
+        self.last_orientation = self.real_orientation
         self.action = 'pre_searching'
         print ('sondeando')
         self.cmd_vel_select('angle_cmd_vel')
@@ -131,6 +137,10 @@ class FSM(object):
             self.no_cubo()
         
     def perseguir_cubo(self):
+        if (self.real_orientation > self.last_orientation):
+            self.side_detected = False
+        else:
+            self.side_detected = True
         self.action = 'hunting'
         print ('persiguiendo cubo')
         self.cmd_vel_select('follow_color_cmd_vel')
@@ -216,6 +226,9 @@ def cross(data):
         fsm.stop_robot()
         fsm.interseccion()
 
+def update_angle(data):
+    fsm.real_orientation = data.data
+
 fsm = FSM()
 servo = Servo(17)
 
@@ -228,8 +241,10 @@ if __name__ == '__main__':
         rospy.Subscriber("cube_color", String, cube_catched)
         rospy.Subscriber("line_detected", Empty, line)
         rospy.Subscriber("line_cross", Empty, cross)
+        rospy.Subscriber("angle_real", Float32, update_angle)
         angle_pub = rospy.Publisher('angle', Float32, queue_size=10)
         cmd_vel_pub = rospy.Publisher('raw_cmd_vel', Twist, queue_size=10)
+        line_pub = rospy.Publisher('active_line', Bool, queue_size=10)
         fsm.cmd_vel_select = rospy.ServiceProxy('mux_cmd_vel/select', MuxSelect)
         fsm.stop_robot()
 
