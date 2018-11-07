@@ -8,7 +8,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 from transitions import Machine
 from gpiozero import Servo
-from topic_tools.srv import *
+from topic_tools.srv import MuxSelect
 import math
 
 class FSM(object):
@@ -104,32 +104,30 @@ class FSM(object):
                 print ('girar azul b')
 
     def sondeo(self):
-        self.action = 'null'
+        self.action = 'pre_searching'
         print ('sondeando')
         self.cmd_vel_select('angle_cmd_vel')
         self.orientation = -math.pi / 2
+        self.ready = False
         angle_pub.publish(self.orientation)
         while not self.ready:
             pass
-        self.ready = False
         self.action = 'searching'
         found = False
         for i in range(10):
             self.orientation = math.pi / 10
             angle_pub.publish(self.orientation)
-            while not self.ready:
-                pass
-            self.ready = False
+            rospy.sleep(0.75)
             if self.state != 'buscar_cubo':
                 found = True
                 break
         if not found:
-            self.action = 'null'
+            self.action = 'pre_searching'
             self.orientation = math.pi / 2
+            self.ready = False
             angle_pub.publish(self.orientation)
             while not self.ready:
                 pass
-            self.ready = False
             self.no_cubo()
         
     def perseguir_cubo(self):
@@ -191,7 +189,7 @@ def turn_completed(data):
     if fsm.action == 'turning':
         fsm.stop_robot()
         fsm.giro_completo()
-    if fsm.action == 'searching':
+    if (fsm.action == 'searching') or (fsm.action == 'pre_searching'):
         fsm.ready = True
 
 def cube_detected(data):
